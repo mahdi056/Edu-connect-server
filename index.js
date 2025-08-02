@@ -44,6 +44,14 @@ async function run() {
       }
     })
 
+    app.delete('/colleges/:id', async (req, res) => {
+      const id = req.params.id;
+      const result = await allcollegeCollection.deleteOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
+
+
+
     app.get('/college/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -58,6 +66,45 @@ async function run() {
         res.status(500).send({ message: 'Error fetching college details' });
       }
     });
+
+
+    app.post('/colleges', async (req, res) => {
+      try {
+        const {
+          name,
+          image,
+          rating,
+          admissionDate,
+          researchCount,
+          events,
+          sports
+        } = req.body;
+
+        // Basic validation (optional)
+        if (!name || !image || !rating || !admissionDate || !researchCount) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const newCollege = {
+          name,
+          image,
+          rating: parseFloat(rating),
+          admissionDate,
+          researchCount: parseInt(researchCount),
+          events: Array.isArray(events) ? events : [],
+          sports: Array.isArray(sports) ? sports : [],
+          createdAt: new Date()
+        };
+
+        const result = await allcollegeCollection.insertOne(newCollege);
+        res.status(201).json({ success: true, insertedId: result.insertedId });
+
+      } catch (error) {
+        console.error('Error saving college:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    });
+
 
 
     app.post('/admission', async (req, res) => {
@@ -80,6 +127,56 @@ async function run() {
         res.send(admissions);
       } catch (error) {
         res.status(500).send({ message: 'Failed to fetch admissions' });
+      }
+    });
+
+    app.get('/admin/admissions', async (req, res) => {
+      try {
+        const admissions = await admissionCollection.find().toArray();
+        res.send(admissions);
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch admissions' });
+      }
+    });
+
+    app.patch('/admin/admission/:id', async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body; // true for accepted, false for rejected
+
+      if (typeof status !== 'boolean') {
+        return res.status(400).send({ message: 'Invalid status value' });
+      }
+
+      try {
+        const result = await admissionCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: status } }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ message: 'Admission not found' });
+        }
+
+        res.send({ success: true, modifiedCount: result.modifiedCount });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to update status' });
+      }
+    });
+
+    // Delete an admission
+    app.delete('/admin/admission/:id', async (req, res) => {
+      const id = req.params.id;
+
+      try {
+        const result = await admissionCollection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: 'Admission not found' });
+        }
+
+        res.send({ success: true, deletedCount: result.deletedCount });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to delete admission' });
       }
     });
 
@@ -138,50 +235,52 @@ async function run() {
       res.send(result);
     });
 
-
-
-    app.get('/users/:email', async (req, res) => {
-      const email = req.params.email;
-      const user = await userCollection.findOne({ email });
-
-      if (!user) {
-        return res.status(404).send({ message: "User not found" });
-      }
-
-      res.send(user);
+    app.get('/users', async (req, res) => {
+      const users = await userCollection.find().toArray();
+      res.send(users);
     });
 
-
-    app.put('/users/:email', async (req, res) => {
-      const email = req.params.email;
-      const updatedData = req.body;
+    app.patch('/users/:id', async (req, res) => {
+      const id = req.params.id;
+      const { role } = req.body;
 
       const result = await userCollection.updateOne(
-        { email },
-        { $set: updatedData }
+        { _id: new ObjectId(id) },
+        { $set: { role } }
       );
-
       res.send(result);
     });
 
-
-    app.get('/all-searched-college', async (req, res) => {
-  try {
-    const search = req.query.name;
-
-    const query = search
-      ? { name: { $regex: search, $options: 'i' } } 
-      : {};
-
-    const colleges = await allcollegeCollection.find(query).toArray();
-    res.send(colleges);
-  } catch (error) {
-    res.status(500).send({ message: "Error fetching colleges", error });
-  }
-});
+     app.get('/users/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = await userCollection.findOne({ email });
+        if (!user) return res.status(404).send({ message: 'User not found' });
+        res.send(user);  
+      } catch (error) {
+        res.status(500).send({ message: 'Server error' });
+      }
+    });
 
 
 
+  app.get('/all-searched-college', async (req, res) => {
+      try {
+        const search = req.query.name;
+
+        const query = search
+          ? { name: { $regex: search, $options: 'i' } }
+          : {};
+
+        const colleges = await allcollegeCollection.find(query).toArray();
+        res.send(colleges);
+      } catch (error) {
+        res.status(500).send({ message: "Error fetching colleges", error });
+      }
+    });
+
+
+  
 
 
 
@@ -192,8 +291,11 @@ async function run() {
 
 
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+
+
+
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
